@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relation Map Studio ver.1.0.0</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.26.0/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-svg/cytoscape-svg.js"></script>
+    <script src="https://unpkg.com/cytoscape-compound-drag-and-drop/cytoscape-compound-drag-and-drop.js"></script>
+    <script src="https://unpkg.com/cytoscape-cose-bilkent/cytoscape-cose-bilkent.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --sidebar-bg: #f8f9fa; --accent: #2c3e50; --panel-bg: #ffffff;
+            --text-color: #333; --border-color: #ddd; --map-bg: #ffffff; 
+            --grid-color: #ddd; --dimmed-opacity: 0.4;
+            --btn-secondary: #7f8c8d; --btn-dark: #34495e;
+            --box-border: #95a5a6; --box-bg: rgba(0,0,0,0.05);
+            --node-bg: #ffffff; --label-bg: #ffffff;
+        }
+        body.dark-mode {
+            --sidebar-bg: #1a1a1a; --accent: #ecf0f1; --panel-bg: #2d2d2d;
+            --text-color: #ecf0f1; --border-color: #444; --map-bg: #121212; 
+            --grid-color: #333; --dimmed-opacity: 0.45;
+            --btn-secondary: #4a4a4a; --btn-dark: #000000;
+            --box-border: #7f8c8d; --box-bg: rgba(255,255,255,0.05);
+            --node-bg: #2d2d2d; --label-bg: #2d2d2d;
+        }
+        body.blue-mode {
+            --sidebar-bg: #0a192f; --accent: #00d2ff; --panel-bg: #112240;
+            --text-color: #e6f1ff; --border-color: #233554; --map-bg: #020c1b; 
+            --grid-color: #1d2d50; --dimmed-opacity: 0.5;
+            --btn-secondary: #1e3a8a; --btn-dark: #0f172a;
+            --box-border: #1e3a8a; --box-bg: rgba(0, 210, 255, 0.05);
+            --node-bg: #112240; --label-bg: #112240;
+        }
+        
+        body, #sidebar, .detail-panel, input, textarea, select, button, .custom-file-upload {
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+        }
+        body { margin: 0; display: flex; height: 100vh; font-family: sans-serif; overflow: hidden; color: var(--text-color); }
+        
+        /* Sidebar */
+        #sidebar { width: 280px; min-width: 280px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); padding: 0 10px 10px 10px; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; z-index: 100; transition: transform 0.3s ease; }
+        
+        #sidebarToggle { display: none; position: fixed; top: 10px; left: 10px; z-index: 101; background: var(--accent); color: var(--sidebar-bg); border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
+        /* Mobile Styles */
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #sidebar { position: fixed; left: 0; top: 0; width: 280px; height: 100vh; transform: translateX(-100%); border-right: 1px solid var(--border-color); box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2); }
+            #sidebar.open { transform: translateX(0); }
+            #sidebarToggle { display: block; }
+            #cy { flex-grow: 1; margin-top: 50px; }
+            #zoomControls { top: 60px; }
+            .detail-panel { max-width: 90vw; }
+        }
+        
+        /* Sticky Header Area */
+        .sidebar-sticky {
+            position: sticky; top: 0; background: var(--sidebar-bg);
+            z-index: 20; padding-top: 10px; padding-bottom: 5px;
+            margin: 0 -10px; padding-left: 10px; padding-right: 10px;
+            border-bottom: 1px solid var(--border-color);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .header-area { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+        h3 { margin: 0; font-size: 11px; color: var(--text-color); border-left: 3px solid var(--accent); padding-left: 6px; opacity: 0.8; }
+        .section { display: flex; flex-direction: column; gap: 6px; padding: 5px 0; }
+        
+        /* Inputs & Controls */
+        input, textarea, select { 
+            width: 100%; 
+            padding: 6px; 
+            border: 1px solid var(--border-color); 
+            border-radius: 4px; 
+            box-sizing: border-box; 
+            font-size: 12px; 
+            background: var(--panel-bg); 
+            color: var(--text-color); 
+            font-weight: normal;
+            height: 32px;
+            resize: none;
+        }
+        textarea { 
+            height: 32px; 
+            min-height: 32px;
+            max-height: 200px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+        .custom-file-upload { display: block; width: 100%; padding: 6px; border: 1px dashed var(--accent); border-radius: 4px; text-align: center; font-size: 10px; cursor: pointer; color: var(--accent); background: transparent; box-sizing: border-box; }
+        input[type="file"] { display: none; }
+        .color-control { display: flex; align-items: center; gap: 8px; background: var(--panel-bg); padding: 4px; border-radius: 4px; border: 1px solid var(--border-color); }
+        .preview-circle { width: 24px; height: 24px; border-radius: 50%; border: 3px solid #e74c3c; flex-shrink: 0; display: inline-block; }
+        .preview-square { width: 28px; height: 28px; display: inline-block; border: 3px solid #3498db; background: transparent; box-sizing: border-box; border-radius: 0; flex-shrink: 0; }
+        input[type="color"] { flex-grow: 1; height: 28px; cursor: pointer; border: none; background: none; padding: 0; }
+        
+        /* Buttons */
+        button { background: var(--accent); color: var(--sidebar-bg); cursor: pointer; padding: 8px; border: none; border-radius: 4px; font-weight: bold; font-size: 11px; user-select: none; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .mode-toggle-btn { font-size: 10px; margin-top: 4px; margin-left: auto; padding: 4px 8px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; border-radius: 12px; }
+
+        .btn-delete {
+            background: #e74c3c !important; color: white !important; margin-top: 5px;
+            position: relative; overflow: hidden; z-index: 1;
+        }
+        .btn-delete::before {
+            content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 0%;
+            background: rgba(0,0,0,0.3); z-index: -1;
+            transition: width 0s;
+        }
+        .btn-delete.is-pressing::before {
+            width: 100%; transition: width 0.5s linear;
+        }
+
+        .history-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 5px; }
+
+        /* Search Box */
+        .search-box { position: relative; margin-bottom: 5px; }
+        .search-box input { padding-left: 24px; }
+        .search-icon { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 12px; opacity: 0.5; }
+
+        /* Canvas */
+        #cy { flex-grow: 1; background-color: var(--map-bg); position: relative; transition: background-color 0.3s; }
+        
+        .detail-panel { position: absolute; background: var(--panel-bg); border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); border: 1px solid var(--border-color); z-index: 1000; display: none; width: 260px; flex-direction: column; gap: 6px; max-height: 90vh; overflow-y: auto; }
+        
+        /* Zoom Controls - 右上固定 */
+        #zoomControls { position: fixed; top: 10px; right: 10px; z-index: 100; display: flex; gap: 4px; }
+        #zoomControls button { padding: 8px 12px; font-size: 14px; background: var(--accent); color: var(--sidebar-bg); border: none; border-radius: 4px; cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 4px; }
+        #zoomControls button:hover { opacity: 0.9; }
+
+        /* Modern Credit Card Style as Image/Canvas */
+        .credit-divider {
+            margin-top: auto; padding: 10px 0 0 0; border-top: 1px solid var(--border-color);
+        }
+        .credit-section {
+            font-size: 9px; line-height: 1.5; color: var(--text-color);
+        }
+        .credit-seal {
+            position: absolute;
+            top: -13px;
+            right: 0;
+            background-image: url('data:image/svg+xml,%3C%3Fxml%20version%3D%221.0%22%20encoding%3D%22UTF-8%22%20standalone%3D%22no%22%3F%3E%0A%3C!--%20Created%20with%20Inkscape%20(http%3A%2F%2Fwww.inkscape.org%2F)%20--%3E%0A%0A%3Csvg%0A%20%20%20width%3D%22500px%22%0A%20%20%20height%3D%22500px%22%0A%20%20%20viewBox%3D%220%200%20500%20500%22%0A%20%20%20version%3D%221.1%22%0A%20%20%20id%3D%22SVGRoot%22%0A%20%20%20sodipodi%3Adocname%3D%22%E3%81%82%E3%81%96%E3%82%89%E3%81%97.svg%22%0A%20%20%20xml%3Aspace%3D%22preserve%22%0A%20%20%20inkscape%3Aversion%3D%221.2.2%20(732a01da63%2C%202022-12-09)%22%0A%20%20%20xmlns%3Ainkscape%3D%22http%3A%2F%2Fwww.inkscape.org%2Fnamespaces%2Finkscape%22%0A%20%20%20xmlns%3Asodipodi%3D%22http%3A%2F%2Fsodipodi.sourceforge.net%2FDTD%2Fsodipodi-0.dtd%22%0A%20%20%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%0A%20%20%20xmlns%3Asvg%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Csodipodi%3Anamedview%0A%20%20%20%20%20id%3D%22namedview187%22%0A%20%20%20%20%20pagecolor%3D%22%23ffffff%22%0A%20%20%20%20%20bordercolor%3D%22%23000000%22%0A%20%20%20%20%20borderopacity%3D%220.25%22%0A%20%20%20%20%20inkscape%3Ashowpageshadow%3D%222%22%0A%20%20%20%20%20inkscape%3Apageopacity%3D%220.0%22%0A%20%20%20%20%20inkscape%3Apagecheckerboard%3D%220%22%0A%20%20%20%20%20inkscape%3Adeskcolor%3D%22%23d1d1d1%22%0A%20%20%20%20%20inkscape%3Adocument-units%3D%22px%22%0A%20%20%20%20%20showgrid%3D%22false%22%0A%20%20%20%20%20inkscape%3Azoom%3D%222.0246816%22%0A%20%20%20%20%20inkscape%3Acx%3D%22222.75107%22%0A%20%20%20%20%20inkscape%3Acy%3D%22209.16869%22%0A%20%20%20%20%20inkscape%3Awindow-width%3D%221920%22%0A%20%20%20%20%20inkscape%3Awindow-height%3D%22991%22%0A%20%20%20%20%20inkscape%3Awindow-x%3D%22-9%22%0A%20%20%20%20%20inkscape%3Awindow-y%3D%22-9%22%0A%20%20%20%20%20inkscape%3Awindow-maximized%3D%221%22%0A%20%20%20%20%20inkscape%3Acurrent-layer%3D%22layer2%22%20%2F%3E%3Cdefs%0A%20%20%20%20%20id%3D%22defs182%22%3E%3Cinkscape%3Apath-effect%0A%20%20%20%20%20%20%20effect%3D%22bspline%22%0A%20%20%20%20%20%20%20id%3D%22path-effect1790%22%0A%20%20%20%20%20%20%20is_visible%3D%22true%22%0A%20%20%20%20%20%20%20lpeversion%3D%221%22%0A%20%20%20%20%20%20%20weight%3D%2233.333333%22%0A%20%20%20%20%20%20%20steps%3D%222%22%0A%20%20%20%20%20%20%20helper_size%3D%220%22%0A%20%20%20%20%20%20%20apply_no_weight%3D%22true%22%0A%20%20%20%20%20%20%20apply_with_weight%3D%22true%22%0A%20%20%20%20%20%20%20only_selected%3D%22false%22%20%2F%3E%3Cinkscape%3Apath-effect%0A%20%20%20%20%20%20%20effect%3D%22bspline%22%0A%20%20%20%20%20%20%20id%3D%22path-effect1592%22%0A%20%20%20%20%20%20%20is_visible%3D%22true%22%0A%20%20%20%20%20%20%20lpeversion%3D%221%22%0A%20%20%20%20%20%20%20weight%3D%2233.333333%22%0A%20%20%20%20%20%20%20steps%3D%222%22%0A%20%20%20%20%20%20%20helper_size%3D%220%22%0A%20%20%20%20%20%20%20apply_no_weight%3D%22true%22%0A%20%20%20%20%20%20%20apply_with_weight%3D%22true%22%0A%20%20%20%20%20%20%20only_selected%3D%22false%22%20%2F%3E%3Cinkscape%3Apath-effect%0A%20%20%20%20%20%20%20effect%3D%22bspline%22%0A%20%20%20%20%20%20%20id%3D%22path-effect1523%22%0A%20%20%20%20%20%20%20is_visible%3D%22true%22%0A%20%20%20%20%20%20%20lpeversion%3D%221%22%0A%20%20%20%20%20%20%20weight%3D%2233.333333%22%0A%20%20%20%20%20%20%20steps%3D%222%22%0A%20%20%20%20%20%20%20helper_size%3D%220%22%0A%20%20%20%20%20%20%20apply_no_weight%3D%22true%22%0A%20%20%20%20%20%20%20apply_with_weight%3D%22true%22%0A%20%20%20%20%20%20%20only_selected%3D%22false%22%20%2F%3E%3Cinkscape%3Apath-effect%0A%20%20%20%20%20%20%20effect%3D%22bspline%22%0A%20%20%20%20%20%20%20id%3D%22path-effect658%22%0A%20%20%20%20%20%20%20is_visible%3D%22true%22%0A%20%20%20%20%20%20%20lpeversion%3D%221%22%0A%20%20%20%20%20%20%20weight%3D%2233.333333%22%0A%20%20%20%20%20%20%20steps%3D%222%22%0A%20%20%20%20%20%20%20helper_size%3D%220%22%0A%20%20%20%20%20%20%20apply_no_weight%3D%22true%22%0A%20%20%20%20%20%20%20apply_with_weight%3D%22true%22%0A%20%20%20%20%20%20%20only_selected%3D%22false%22%20%2F%3E%3C%2Fdefs%3E%3Cg%0A%20%20%20%20%20inkscape%3Agroupmode%3D%22layer%22%0A%20%20%20%20%20id%3D%22layer2%22%0A%20%20%20%20%20inkscape%3Alabel%3D%22Layer%202%22%0A%20%20%20%20%20style%3D%22display%3Ainline%22%3E%3Cpath%0A%20%20%20%20%20%20%20id%3D%22path487%22%0A%20%20%20%20%20%20%20style%3D%22display%3Anone%3Bopacity%3A0.8%3Bfill%3A%23ffff00%3Bstroke%3A%23000000%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22M%20169.57513%2C74.117317%20A%20100.17511%2C72.251732%200%200%200%2069.399349%2C146.36927%20V%20277.672%20a%2082.157974%2C72.251732%200%200%200%2082.158201%2C72.25196%2082.157974%2C72.251732%200%200%200%2082.15821%2C-72.25196%2082.157974%2C72.251732%200%200%200%20-38.91602%2C-61.4121%20100.17511%2C72.251732%200%200%200%2053.28906%2C-25.11719%20l%2033.88477%2C71.22461%2039.67187%2C-18.87305%20-56.41015%2C-118.57031%20-0.0234%2C0.0117%20A%20100.17511%2C72.251732%200%200%200%20169.57513%2C74.117317%20Z%20M%20113.33099%2C205.97279%20a%20100.17511%2C72.251732%200%200%200%209.56836%2C4.18164%2082.157974%2C72.251732%200%200%200%20-9.56836%2C3.76171%20z%22%20%2F%3E%3Cpath%0A%20%20%20%20%20%20%20id%3D%22path656%22%0A%20%20%20%20%20%20%20style%3D%22display%3Ainline%3Bopacity%3A1%3Bfill%3A%23000000%3Bstroke%3A%23000000%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22M%20174.8164%2C76.462571%20C%20145.84797%2C75.804747%20115.054%2C84.140898%2096.261705%2C106.55242%2066.194041%2C142.41084%2066.853026%2C214.30245%2067.675767%2C256.195%20c%200.465109%2C23.68251%201.00135%2C37.58408%202.017578%2C46.40625%20l%20-0.03906%2C0.0156%20c%200.633362%2C7.30656%201.266693%2C14.61274%202.630859%2C19.60352%201.364166%2C4.99077%203.457075%2C7.66654%204.246094%2C11.80468%200.789019%2C4.13815%200.274682%2C9.73815%20-0.824219%2C13.22461%20-1.098901%2C3.48646%20-2.781301%2C4.85998%20-3.804687%2C5.68555%20-0.0052%2C0.004%20-0.0066%2C0.008%20-0.01172%2C0.0117%20-9.631469%2C7.51119%20-22.312189%2C15.30355%20-29.554687%2C22.45312%20-9.214593%2C9.09636%20-9.543031%2C17.14141%20-6.333985%2C21.16407%203.209046%2C4.02261%209.955292%2C4.02382%2025.339844%2C4.11132%2015.384552%2C0.0875%2039.406477%2C0.26227%2054.873047%2C-2.01171%2015.46659%2C-2.27398%2022.37752%2C-6.99736%2041.54688%2C-9.6211%2019.16936%2C-2.62375%2050.5962%2C-3.14834%2065.98047%2C0.52539%2015.38426%2C3.67374%2014.72504%2C11.54568%2018.42773%2C15.56836%203.70269%2C4.02273%2011.76643%2C4.19688%2032.33399%2C4.10938%2020.56755%2C-0.0875%2053.63902%2C-0.43807%2069.68164%2C-2.79883%2016.04262%2C-2.36077%2015.05421%2C-6.73323%209.70703%2C-13.64258%20-5.34718%2C-6.90934%20-15.05345%2C-16.35444%20-19.99024%2C-22.47656%20-4.93678%2C-6.12213%20-5.10202%2C-8.92016%2017.11133%2C-10.66992%2022.21334%2C-1.74976%2066.80284%2C-2.44883%2089.67383%2C-27.54883%2022.871%2C-25.10001%2024.02346%2C-74.60104%2024.68164%2C-110.54688%200.65818%2C-35.94583%200.82292%2C-58.33506%20-0.82226%2C-74.77734%20-1.64519%2C-16.44228%20-5.04988%2C-26.77878%20-14.70118%2C-32.19336%20-9.6513%2C-5.41459%20-25.44632%2C-5.59091%20-33.59179%2C-4.54102%20-8.14549%2C1.04989%20-8.63974%2C3.32466%20-8.96875%2C6.99805%20-0.32901%2C3.67338%20-0.492%2C8.7457%20-2.63086%2C12.50586%20-2.13888%2C3.76017%20-6.25371%2C6.20804%20-9.05078%2C5.77149%20-2.79708%2C-0.43655%20-4.27832%2C-3.75964%20-5.92383%2C-8.48243%20-1.64551%2C-4.72278%20-3.45375%2C-10.84409%20-12.0918%2C-13.81836%20-8.63805%2C-2.97426%20-24.10582%2C-2.79898%20-31.83984%2C0.4375%20-7.73403%2C3.2365%20-7.73434%2C9.53339%20-6.41797%2C28.16211%201.31637%2C18.62872%203.94994%2C49.58827%20-6.58008%2C63.84375%20-10.53003%2C14.2555%20-34.22264%2C11.80617%20-46.07031%2C1.92383%20-11.84766%2C-9.88233%20-11.8493%2C-27.19846%20-16.33594%2C-51.16211%20-4.48664%2C-23.96364%20-13.45957%2C-54.57321%20-48.3418%2C-69.966798%20-13.08084%2C-5.772594%20-29.80449%2C-9.406087%20-47.18554%2C-9.800781%20z%22%20%2F%3E%3Cellipse%0A%20%20%20%20%20%20%20style%3D%22opacity%3A1%3Bfill%3A%23ffffff%3Bstroke%3A%23000000%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20id%3D%22path712%22%0A%20%20%20%20%20%20%20cx%3D%22130.30611%22%0A%20%20%20%20%20%20%20cy%3D%22155.94231%22%0A%20%20%20%20%20%20%20rx%3D%227.3049483%22%0A%20%20%20%20%20%20%20ry%3D%227.2018428%22%20%2F%3E%3Cellipse%0A%20%20%20%20%20%20%20style%3D%22display%3Ainline%3Bopacity%3A1%3Bfill%3A%23ffffff%3Bstroke%3A%23000000%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20id%3D%22path712-5%22%0A%20%20%20%20%20%20%20cx%3D%22195.24802%22%0A%20%20%20%20%20%20%20cy%3D%22155.94231%22%0A%20%20%20%20%20%20%20rx%3D%227.3049483%22%0A%20%20%20%20%20%20%20ry%3D%227.2018428%22%20%2F%3E%3Cpath%0A%20%20%20%20%20%20%20id%3D%22path712-5-9%22%0A%20%20%20%20%20%20%20style%3D%22display%3Ainline%3Bopacity%3A1%3Bfill%3A%23cccccc%3Bstroke%3A%23000000%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22m%20162.65039%2C167.08086%20a%2014.638273%2C11.814249%200%200%200%20-14.37891%2C9.71875%2016.982298%2C10.699713%200%200%200%20-0.25976%2C-0.004%2016.982298%2C10.699713%200%200%200%20-16.98242%2C10.70117%2016.982298%2C10.699713%200%200%200%2016.98242%2C10.69922%2016.982298%2C10.699713%200%200%200%2012.95898%2C-3.8164%20h%204.33594%20a%2016.982298%2C10.699713%200%200%200%2012.95898%2C3.8164%2016.982298%2C10.699713%200%200%200%2016.98243%2C-10.69922%2016.982298%2C10.699713%200%200%200%20-16.98243%2C-10.70117%2016.982298%2C10.699713%200%200%200%20-1.20312%2C0.0508%2014.638273%2C11.814249%200%200%200%20-14.41211%2C-9.76562%20z%22%20%2F%3E%3Cpath%0A%20%20%20%20%20%20%20style%3D%22opacity%3A1%3Bfill%3A%234d4d4d%3Bstroke%3A%23ffffff%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22m%20162.37296%2C165.65052%20c%20-5.04629%2C0.0285%20-10.22959%2C2.16091%20-13.3512%2C6.21663%20-0.73755%2C1.04514%20-1.43767%2C2.16763%20-1.7868%2C3.40623%20-0.20496%2C1.12228%200.88086%2C1.78919%201.67297%2C2.32447%204.42247%2C2.95625%208.86564%2C5.88532%2013.38135%2C8.69745%200.76442%2C0.55022%201.72464%2C0.16542%202.38347%2C-0.36199%204.37299%2C-2.84001%208.74895%2C-5.67793%2013.06454%2C-8.6042%200.68945%2C-0.53927%200.70846%2C-1.51866%200.32314%2C-2.24662%20-1.38581%2C-3.91487%20-4.86463%2C-6.74543%20-8.64697%2C-8.22106%20-2.23484%2C-0.87056%20-4.64847%2C-1.23475%20-7.0405%2C-1.21091%20z%22%0A%20%20%20%20%20%20%20id%3D%22path1305%22%20%2F%3E%3Cpath%0A%20%20%20%20%20%20%20id%3D%22path1465%22%0A%20%20%20%20%20%20%20style%3D%22display%3Ainline%3Bopacity%3A1%3Bfill%3A%23cccccc%3Bstroke%3A%23ffffff%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22M%20170.09131%2C212.44507%20A%2051.439255%2C42.005066%200%200%200%20118.7085%2C253.8064%20l%20-0.0566%2C-0.39063%20c%200%2C0.34123%200.002%2C0.67246%200.002%2C1.01368%20a%2051.439255%2C42.005066%200%200%200%20-0.002%2C0.0195%2051.439255%2C42.005066%200%200%200%200.002%2C0.0195%20c%202.3e-4%2C42.59477%200.0266%2C85.03517%203.43945%2C107.76367%203.4413%2C22.91759%2010.56849%2C25.90864%2013.87305%2C27.3125%201.25711%2C0.53405%201.62185%2C0.69851%202.01172%2C0.87305%200.0128%2C0.0892%200.0263%2C0.17836%200.0391%2C0.26758%200.62826%2C0.73221%201.69103%2C-0.0965%202.46094%2C-0.13477%2012.34852%2C-3.49612%2025.28176%2C-4.79807%2038.0918%2C-5.41016%209.28234%2C-0.20612%2018.59325%2C-0.33749%2027.87109%2C0.0664%208.11104%2C0.65394%2016.44151%2C1.24083%2024.01367%2C4.5332%200.41034%2C0.27672%200.80613%2C0.11994%201.00781%2C-0.19726%20l%200.0117%2C0.14062%20c%200.005%2C-0.0593%200.008%2C-0.12627%200.0137%2C-0.18554%200.10549%2C-0.19476%200.15611%2C-0.4272%200.0547%2C-0.69336%200.63995%2C-7.25424%201.20173%2C-15.01468%20-0.50586%2C-37.27539%20-1.6557%2C-21.58423%20-5.44967%2C-56.82754%20-9.375%2C-92.91797%20-0.003%2C-0.0436%20-0.006%2C-0.0872%20-0.01%2C-0.13086%200.003%2C-0.11568%20-0.0134%2C-0.23568%20-0.043%2C-0.35156%20-0.0752%2C-0.69089%20-0.14742%2C-1.36718%20-0.22266%2C-2.0586%20a%2051.439255%2C42.005066%200%200%200%200.14258%2C-1.62109%2051.439255%2C42.005066%200%200%200%20-51.4375%2C-42.00391%20z%20m%2051.20898%2C44.61914%200.0508%2C0.67188%20c%20-0.0342%2C-0.0234%20-0.0625%2C-0.0537%20-0.10352%2C-0.0664%20a%2051.439255%2C42.005066%200%200%200%200.0527%2C-0.60547%20z%20m%20-101.05468%2C7.38477%20a%2051.439255%2C42.005066%200%200%200%200.29101%2C1.09179%20c%20-0.0476%2C0.0211%20-0.0773%2C0.0593%20-0.11914%2C0.0918%20z%22%20%2F%3E%3Cpath%0A%20%20%20%20%20%20%20id%3D%22rect1998%22%0A%20%20%20%20%20%20%20style%3D%22opacity%3A1%3Bfill%3A%23cccccc%3Bstroke%3A%23ffffff%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22m%20253.26391%2C157.12296%20c%20-0.33814%2C0.005%20-0.68294%2C0.0523%20-1.02187%2C0.14648%20l%20-25.54201%2C7.09376%20c%20-1.80761%2C0.50213%20-2.78375%2C2.13696%20-2.18938%2C3.66405%200.59438%2C1.5271%202.52953%2C2.35175%204.33715%2C1.84962%20l%2025.5397%2C-7.09571%20c%201.80762%2C-0.50214%202.78606%2C-2.13501%202.19169%2C-3.66211%20-0.48293%2C-1.24076%20-1.85002%2C-2.01753%20-3.31528%2C-1.99609%20z%20m%20-26.1616%2C16.08202%20c%20-1.90284%2C1e-5%20-3.4355%2C1.29286%20-3.4355%2C2.9004%20-1e-5%2C1.60753%201.53266%2C2.90235%203.4355%2C2.90234%20h%2026.88523%20c%201.90284%2C0%203.4355%2C-1.2948%203.43549%2C-2.90234%201e-5%2C-1.60754%20-1.53266%2C-2.90039%20-3.43549%2C-2.90039%20z%20m%200.72362%2C8.98243%20c%20-1.46525%2C-0.0214%20-2.83234%2C0.75728%20-3.31527%2C1.99805%20-0.59438%2C1.52709%200.38175%2C3.15997%202.18937%2C3.66211%20l%2025.54201%2C7.0957%20c%201.80763%2C0.50213%203.74277%2C-0.32251%204.33715%2C-1.84961%200.59438%2C-1.5271%20-0.38407%2C-3.16193%20-2.19169%2C-3.66406%20l%20-25.5397%2C-7.0957%20c%20-0.33892%2C-0.0941%20-0.68372%2C-0.14155%20-1.02187%2C-0.14649%20z%22%20%2F%3E%3Cpath%0A%20%20%20%20%20%20%20id%3D%22rect1998-6%22%0A%20%20%20%20%20%20%20style%3D%22display%3Ainline%3Bfill%3A%23cccccc%3Bstroke%3A%23ffffff%3Bstroke-width%3A0%3Bpaint-order%3Amarkers%20fill%20stroke%22%0A%20%20%20%20%20%20%20d%3D%22m%2082.510146%2C157.12296%20c%200.304905%2C0.005%200.615816%2C0.0523%200.921433%2C0.14648%20l%2023.031551%2C7.09376%20c%201.62994%2C0.50213%202.51014%2C2.13696%201.97419%2C3.66405%20-0.53596%2C1.5271%20-2.28091%2C2.35175%20-3.91086%2C1.84962%20l%20-23.029469%2C-7.09571%20c%20-1.629953%2C-0.50214%20-2.512225%2C-2.13501%20-1.976274%2C-3.66211%200.435464%2C-1.24076%201.668186%2C-2.01753%202.989429%2C-1.99609%20z%20m%2023.590244%2C16.08202%20c%201.71581%2C1e-5%203.09783%2C1.29286%203.09783%2C2.9004%2010e-6%2C1.60753%20-1.38202%2C2.90235%20-3.09783%2C2.90234%20H%2081.85764%20c%20-1.715815%2C0%20-3.097833%2C-1.2948%20-3.097824%2C-2.90234%20-9e-6%2C-1.60754%201.382018%2C-2.90039%203.097824%2C-2.90039%20z%20m%20-0.6525%2C8.98243%20c%201.32123%2C-0.0214%202.55396%2C0.75728%202.98942%2C1.99805%200.53596%2C1.52709%20-0.34423%2C3.15997%20-1.97418%2C3.66211%20l%20-23.031551%2C7.0957%20c%20-1.629962%2C0.50213%20-3.374902%2C-0.32251%20-3.910862%2C-1.84961%20-0.53596%2C-1.5271%200.346321%2C-3.16193%201.976274%2C-3.66406%20l%2023.029469%2C-7.0957%20c%200.3056%2C-0.0941%200.61652%2C-0.14155%200.92143%2C-0.14649%20z%22%20%2F%3E%3C%2Fg%3E%3Cg%0A%20%20%20%20%20inkscape%3Alabel%3D%22Layer%201%22%0A%20%20%20%20%20inkscape%3Agroupmode%3D%22layer%22%0A%20%20%20%20%20id%3D%22layer1%22%0A%20%20%20%20%20style%3D%22display%3Ainline%22%20%2F%3E%3C%2Fsvg%3E');
+            background-size: contain;
+            background-repeat: no-repeat;
+            width: 75px;
+            height: 75px;
+        }
+        .credit-header {
+            position: relative; display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+            font-weight: 600; color: var(--accent);
+        }
+        .credit-header i {
+            font-size: 10px;
+        }
+        .credit-creator {
+            margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border-color);
+        }
+        .credit-creator-name {
+            font-weight: 500; margin-bottom: 2px;
+        }
+        .credit-creator-name a {
+            color: var(--text-color); text-decoration: none; opacity: 0.8; transition: opacity 0.2s;
+        }
+        .credit-creator-name a:hover {
+            opacity: 1; text-decoration: underline;
+        }
+        .credit-creator-role {
+            opacity: 0.6; font-size: 8px;
+        }
+        .credit-tools {
+            display: grid; grid-template-columns: 1fr; gap: 4px;
+        }
+        .credit-tool-link {
+            display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px;
+            color: var(--text-color); text-decoration: none; opacity: 0.85;
+            transition: all 0.2s ease; background: transparent;
+        }
+        .credit-tool-link:hover {
+            opacity: 1; background: rgba(44, 62, 80, 0.08);
+        }
+        body.dark-mode .credit-tool-link:hover {
+            background: rgba(236, 240, 241, 0.08);
+        }
+        body.blue-mode .credit-tool-link:hover {
+            background: rgba(0, 210, 255, 0.08);
+        }
+        .credit-tool-icon {
+            font-size: 10px; flex-shrink: 0; color: var(--accent); width: 14px; text-align: center;
+        }
+    </style>
+</head>
+<body class="light-mode">
+
+<button id="sidebarToggle" onclick="toggleSidebar()">☰</button>
+
+<div id="sidebar">
+    <div class="sidebar-sticky">
+        <div class="header-area">
+            <button class="mode-toggle-btn" onclick="rotateMode()" id="modeLabelBtn">ライト</button>
+        </div>
+        <div class="history-controls">
+            <button id="btnUndo" onclick="historyManager.undo()" disabled>↶ 元に戻す</button>
+            <button id="btnRedo" onclick="historyManager.redo()" disabled>やり直し ↷</button>
+        </div>
+        <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="検索..." oninput="performSearch(this.value)">
+        </div>
+    </div>
+    
+    <div class="section">
+        <h3>単語追加</h3>
+        <input type="text" id="wordLabel" placeholder="単語名">
+        <textarea id="wordDetails" placeholder="詳細"></textarea>
+        <label class="custom-file-upload">
+            <input type="file" id="wordImage" accept="image/*" onchange="updateFileName(this)">
+            <span id="fileNameDisplay">画像を選択</span>
+        </label>
+        <div class="color-control">
+            <div id="w-circle" class="preview-circle" style="border-color:#e74c3c;"></div>
+            <input type="color" id="wordPicker" value="#e74c3c" oninput="updateCircle('wordPicker','w-circle')">
+        </div>
+        <button onclick="addNode()">追加</button>
+    </div>
+
+    <div class="section">
+        <h3>ボックス追加</h3>
+        <input type="text" id="boxLabel" placeholder="ボックス名">
+        <textarea id="boxDetails" placeholder="詳細"></textarea>
+        <label class="custom-file-upload">
+            <input type="file" id="boxImage" accept="image/*" onchange="updateFileName(this, 'boxFileNameDisplay')">
+            <span id="boxFileNameDisplay">画像を選択</span>
+        </label>
+        <div class="color-control" style="margin-bottom:6px;">
+            <div id="b-square" class="preview-square" style="border-color:#95a5a6;"></div>
+            <input type="color" id="boxPicker" value="#95a5a6" oninput="updateCircle('boxPicker','b-square')">
+        </div>
+        <button onclick="addBox()">ボックス追加</button>
+        <div style="font-size:10px; color:var(--text-color); opacity:0.7; margin-top:2px;">
+            ※ ノードをボックスへドラッグして収納
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>関連付け</h3>
+        <div style="display:flex; gap:4px;"><select id="sNode"></select><select id="tNode"></select></div>
+        <select id="edgeStyle">
+            <option value="arrow">矢印（一方通行）</option>
+            <option value="none">矢印なし</option>
+            <option value="both">両矢印（双方向）</option>
+        </select>
+        <input type="text" id="edgeLabel" placeholder="関係性">
+        <textarea id="edgeDetails" placeholder="詳細"></textarea>
+        <div class="color-control">
+            <div id="e-circle" class="preview-circle" style="border-color:#3498db;"></div>
+            <input type="color" id="edgePicker" value="#3498db" oninput="updateCircle('edgePicker','e-circle')">
+        </div>
+        <button onclick="addEdge()">関連付ける</button>
+    </div>
+
+    <div style="margin-top:auto; display:flex; flex-direction:column; gap:4px;">
+        <h3>マップ操作</h3>
+        <select id="gridSelect" onchange="updateGrid()" style="margin-bottom:4px;">
+            <option value="grid-dot">グリッド: ドット</option>
+            <option value="grid-line">グリッド: 方眼</option>
+            <option value="none">グリッド: なし</option>
+        </select>
+        <button onclick="cy.fit(null, 50)" style="width:100%;">全体表示</button>
+        <h3>データ管理</h3>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
+            <button style="background:var(--btn-secondary); color:white" onclick="exportJSON()">JSON保存</button>
+            <button style="background:var(--btn-secondary); color:white" onclick="document.getElementById('importFile').click()">JSON読込</button>
+            <button id="copyBtn" style="background:var(--btn-secondary); color:white" onclick="copySelection()">コピー</button>
+            <button id="pasteBtn" style="background:var(--btn-secondary); color:white" onclick="pasteClipboard()" disabled>貼り付け</button>
+            <button style="background:var(--btn-dark); color:white" onclick="downloadPNG()">PNG保存</button>
+            <button style="background:var(--btn-dark); color:white" onclick="downloadSVG()">SVG保存</button>
+        </div>
+        <input type="file" id="importFile" accept=".json" onchange="importJSON(event)">
+    </div>
+    
+    <div class="credit-divider">
+
+        <div class="credit-section">
+            <div class="credit-header">
+                <div class="credit-seal">
+                </div>
+                <i class="fas fa-star"></i>
+                Relation Map Studio <span style="opacity: 0.6;">ver.1.0.0</span>
+            </div>
+            <div class="credit-creator">
+                <div class="credit-creator-name">
+                    Created by <a href="http://scp-jp.wikidot.com/author:sealbaby-v" target="_blank">SealBaby-V</a>
+                </div>
+                <div class="credit-creator-role">SCP-JP Author, The Seal & Theme Creator</div>
+            </div>
+            <div class="credit-tools">
+                <a href="https://chatgpt.com/" target="_blank" class="credit-tool-link">
+                    <div class="credit-tool-icon"><i class="fas fa-comments"></i></div>
+                    <span>ChatGPT</span>
+                </a>
+                <a href="https://gemini.google.com/" target="_blank" class="credit-tool-link">
+                    <div class="credit-tool-icon"><i class="fas fa-robot"></i></div>
+                    <span>Google Gemini</span>
+                </a>
+                <a href="https://github.com/features/copilot" target="_blank" class="credit-tool-link">
+                    <div class="credit-tool-icon"><i class="fas fa-bolt"></i></div>
+                    <span>GitHub Copilot</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ズームコントロール（右上） -->
+<div id="zoomControls">
+    <button onclick="zoomIn()"><i class="fas fa-magnifying-glass-plus"></i></button>
+    <button onclick="zoomOut()"><i class="fas fa-magnifying-glass-minus"></i></button>
+</div>
+
+<div id="nodeDetailPanel" class="detail-panel">
+    <div style="font-weight:bold; font-size:13px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">詳細編集</div>
+    <input type="text" id="editLabel">
+    <textarea id="editDetails"></textarea>
+    <input type="color" id="editColor" style="height:30px;">
+    <label class="custom-file-upload">
+        <input type="file" id="editImage" accept="image/*" onchange="updateFileName(this, 'editFileNameDisplay')">
+        <span id="editFileNameDisplay">画像を変更</span>
+    </label>
+    <button onclick="updateNodeData()" style="background:#27ae60; color:white">更新反映</button>
+    <button id="btnDeleteNode" class="btn-delete" oncontextmenu="return false;">長押しで削除</button>
+</div>
+
+<div id="edgeDetailPanel" class="detail-panel">
+    <div style="font-weight:bold; font-size:13px; border-bottom:1px solid var(--border-color); padding-bottom:4px;">線詳細</div>
+    <input type="text" id="editEdgeLabel">
+    <textarea id="editEdgeDetails"></textarea>
+    <select id="editEdgeStyle">
+        <option value="arrow">矢印</option>
+        <option value="none">なし</option>
+        <option value="both">両矢印</option>
+    </select>
+    <input type="color" id="editEdgeColor" style="height:30px;">
+    <button onclick="updateEdgeData()" style="background:#27ae60; color:white">更新反映</button>
+    <button id="btnDeleteEdge" class="btn-delete" oncontextmenu="return false;">長押しで削除</button>
+</div>
+
+<div id="cy"></div>
+
+<script>
+    /* --- 初期化変数 --- */
+    let selectedEleId = null;
+    let currentModeIdx = 0;
+    let clipboard = [];
+    const modes = [{ class: 'light-mode', label: 'ライト' },{ class: 'dark-mode', label: 'ダーク' },{ class: 'blue-mode', label: 'ブルー' }];
+    
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('open');
+    }
+    
+    function closeSidebarOnMobile() {
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.remove('open');
+        }
+    }
+    
+    function getComputedVars() {
+        const style = getComputedStyle(document.body);
+        return {
+            nodeBg: style.getPropertyValue('--node-bg').trim(),
+            labelBg: style.getPropertyValue('--label-bg').trim(),
+            textColor: style.getPropertyValue('--text-color').trim()
+        };
+    }
+
+    function createStyle() {
+        const vars = getComputedVars();
+        return [
+            { selector: 'node[?label]', style: {
+                'width': 80, 'height': 80, 'background-color': vars.nodeBg, 'background-image': 'data(bgImage)',
+                'background-fit': 'cover', 'border-width': 1, 'border-color': 'data(color)',
+                'label': 'data(label)', 'text-valign': 'bottom', 'text-margin-y': 10, 'font-weight': 'bold',
+                'text-background-color': vars.labelBg, 'text-background-opacity': 1, 'text-background-padding': 6,
+                'text-background-shape': 'roundrectangle', 'text-border-radius': 6,
+                'text-border-width': 1, 'text-border-color': 'data(color)', 'text-border-opacity': 1, 'color': vars.textColor
+            }},
+            { selector: 'node[isBox]', style: {
+                'shape': 'rectangle', 'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -18,
+                'background-color': vars.nodeBg, 'background-opacity': 1, 'background-image': 'data(bgImage)', 'background-fit': 'cover',
+                'border-width': 1, 'border-style': 'solid', 'border-color': 'data(color)',
+                'padding': 40, 'label': 'data(label)', 'font-size': 14, 'font-weight': 'bold',
+                'color': 'data(color)', 'text-background-color': vars.labelBg, 'text-background-opacity': 1, 
+                'text-border-width': 1, 'text-border-color': 'data(color)'
+            }},
+            { selector: ':parent', style: {
+                'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -22,
+                'background-color': vars.nodeBg, 'background-opacity': 1, 'background-image': 'data(bgImage)', 'background-fit': 'cover',
+                'border-width': 1, 'border-style': 'solid', 'border-color': 'data(color)',
+                'shape': 'rectangle', 'label': 'data(label)', 'font-size': 14, 'font-weight': 'bold',
+                'color': 'data(color)', 'text-background-color': vars.labelBg, 'text-background-opacity': 1, 
+                'text-border-width': 1, 'text-border-color': 'data(color)',
+                'padding': 40
+            }},
+            { selector: 'edge', style: {
+                'width': 2, 'line-color': 'data(color)', 'curve-style': 'bezier',
+                'target-arrow-shape': (ele) => ele.data('style') === 'none' ? 'none' : 'triangle',
+                'source-arrow-shape': (ele) => ele.data('style') === 'both' ? 'triangle' : 'none',
+                'target-arrow-color': 'data(color)', 'source-arrow-color': 'data(color)',
+                'label': 'data(label)', 'font-size': 11, 'font-weight': 'bold',
+                'text-background-color': vars.labelBg, 'text-background-opacity': 1, 'text-background-padding': 3,
+                'text-background-shape': 'roundrectangle', 'text-border-radius': 4,
+                'text-border-width': 1, 'text-border-color': 'data(color)', 'text-border-opacity': 1, 'color': vars.textColor
+            }},
+            { selector: 'node:selected', style: { 
+                'border-width': 3, 'border-opacity': 1, 'border-color': '#ff6b6b',
+                'box-shadow': '0 0 20px rgba(255, 107, 107, 0.6)'
+            }},
+            { selector: 'edge:selected', style: { 'width': 4, 'opacity': 0.7 }},
+            { selector: '.dimmed', style: { 'opacity': 0.1, 'z-index': 0 } },
+            { selector: '.highlight', style: { 'opacity': 1, 'z-index': 999 } },
+            { selector: '.cdnd-drop-target', style: { 'background-opacity': 0.2, 'border-style': 'solid' } }
+        ];
+    }
+    
+    const cy = cytoscape({
+        container: document.getElementById('cy'),
+        boxSelectionEnabled: true,
+        wheelSensitivity: 0.2,
+        style: createStyle()
+    });
+
+    cy.compoundDragAndDrop({
+        grabbedNode: node => true,
+        dropTarget: node => node.data('isBox') === true,
+        dropSibling: node => node.isChild(),
+        newParentNode: (grabbedNode, dropSibling) => { return dropSibling; },
+        overThreshold: 10,
+        outThreshold: 10
+    });
+
+    /* --- History & Drag/Reparent Handling --- */
+    const historyManager = {
+        undoStack: [], redoStack: [], maxSize: 50,
+        push(action) {
+            this.undoStack.push(action);
+            if(this.undoStack.length > this.maxSize) this.undoStack.shift();
+            this.redoStack = []; this.updateButtons();
+        },
+        undo() {
+            if(this.undoStack.length === 0) return;
+            const action = this.undoStack.pop(); this.redoStack.push(action); this.revertAction(action); this.updateButtons(); updateDropdowns();
+        },
+        redo() {
+            if(this.redoStack.length === 0) return;
+            const action = this.redoStack.pop(); this.undoStack.push(action); this.applyAction(action); this.updateButtons(); updateDropdowns();
+        },
+        revertAction(action) {
+            switch(action.type) {
+                case 'add': cy.remove(cy.$id(action.data.id)); break;
+                case 'remove': cy.add(action.data); break;
+                case 'modify': cy.$id(action.id).data(action.oldData); break;
+                case 'move': cy.$id(action.id).position(action.oldPos); break;
+                case 'reparent': {
+                    const n = cy.$id(action.id);
+                    action.oldParent ? n.move({ parent: action.oldParent }) : n.move({ parent: null });
+                } break;
+            }
+        },
+        applyAction(action) {
+            switch(action.type) {
+                case 'add': cy.add(action.data); break;
+                case 'remove': cy.remove(cy.$id(action.data.id)); break;
+                case 'modify': cy.$id(action.id).data(action.newData); break;
+                case 'move': cy.$id(action.id).position(action.newPos); break;
+                case 'reparent': {
+                    const n = cy.$id(action.id);
+                    action.newParent ? n.move({ parent: action.newParent }) : n.move({ parent: null });
+                } break;
+            }
+        },
+        updateButtons() {
+            document.getElementById('btnUndo').disabled = this.undoStack.length === 0;
+            document.getElementById('btnRedo').disabled = this.redoStack.length === 0;
+        }
+    };
+
+    let initialParent = {};
+    let dragStartPos = {};
+
+    cy.on('grab', 'node', e => {
+        const id = e.target.id();
+        initialParent[id] = e.target.parent().id() || null;
+        dragStartPos[id] = { ...e.target.position() };
+    });
+
+    cy.on('free', 'node', e => {
+        const node = e.target;
+        const id = node.id();
+        const newPos = { ...node.position() };
+        
+        if (dragStartPos[id] && (dragStartPos[id].x !== newPos.x || dragStartPos[id].y !== newPos.y)) {
+            historyManager.push({ type: 'move', id: id, oldPos: dragStartPos[id], newPos: newPos });
+        }
+        delete dragStartPos[id];
+
+        if (node.data('isBox')) {
+            delete initialParent[id];
+            return;
+        }
+
+        const box = findContainingBox(node);
+        const newParentId = box ? box.id() : null;
+        const oldParentId = initialParent[id] || null;
+
+        if (oldParentId !== newParentId) {
+            if (newParentId) {
+                node.move({ parent: newParentId });
+            } else {
+                node.move({ parent: null });
+            }
+            historyManager.push({ type: 'reparent', id: id, oldParent: oldParentId, newParent: newParentId });
+            updateDropdowns();
+        }
+
+        delete initialParent[id];
+    });
+
+    function findContainingBox(node) {
+        const p = node.renderedPosition();
+        const boxes = cy.nodes().filter(n => n.data('isBox') === true);
+        for (let i = 0; i < boxes.length; i++) {
+            const b = boxes[i];
+            const bb = b.renderedBoundingBox({ includeLabels: true, includeChildren: false });
+            const pad = 4;
+            if (p.x >= bb.x1 + pad && p.x <= bb.x2 - pad && p.y >= bb.y1 + pad && p.y <= bb.y2 - pad) {
+                return b;
+            }
+        }
+        return null;
+    }
+
+    /* --- Copy & Paste (Multiple Elements) --- */
+    function copySelection() {
+        const selected = cy.$(':selected');
+        if (selected.length === 0) {
+            if (selectedEleId) {
+                const ele = cy.$id(selectedEleId);
+                if (ele && ele.length) {
+                    clipboard = [ele.json()];
+                    document.getElementById('pasteBtn').disabled = false;
+                    alert('1つの要素をコピーしました (Ctrl+C)');
+                    return;
+                }
+            }
+            return alert("要素を選択してください");
+        }
+        clipboard = [];
+        selected.forEach(ele => {
+            clipboard.push(ele.json());
+        });
+        document.getElementById('pasteBtn').disabled = false;
+        alert(clipboard.length + '個の要素をコピーしました (Ctrl+C)');
+    }
+
+    function pasteClipboard() {
+        if (!clipboard || clipboard.length === 0) return alert("コピーしてください (Ctrl+C)");
+        
+        clipboard.forEach((json) => {
+            if (json.group === 'nodes') {
+                const src = json;
+                const newId = (src.data.isBox ? 'box' : 'n') + Date.now() + Math.random();
+                const newData = JSON.parse(JSON.stringify(src));
+                newData.data.id = newId;
+                newData.position = { x: cy.width() / 2 + (Math.random() * 40 - 20), y: cy.height() / 2 + (Math.random() * 40 - 20) };
+                if (newData.data.parent && cy.$id(newData.data.parent).length === 0) {
+                    newData.data.parent = null;
+                }
+                cy.add(newData);
+                historyManager.push({ type: 'add', data: newData });
+            } else if (json.group === 'edges') {
+                const src = json;
+                const s = src.data.source, t = src.data.target;
+                if (cy.$id(s).length === 0 || cy.$id(t).length === 0) {
+                    return;
+                }
+                const newId = 'e' + Date.now() + Math.random();
+                const newData = { group: 'edges', data: { id: newId, source: s, target: t, label: src.data.label, details: src.data.details, color: src.data.color, style: src.data.style } };
+                cy.add(newData);
+                historyManager.push({ type: 'add', data: newData });
+            }
+        });
+        updateDropdowns();
+        alert(clipboard.length + '個の要素を貼り付けました (Ctrl+V)');
+    }
+
+    /* --- Textarea Auto-Resize --- */
+    function autoResizeTextarea(textarea) {
+        textarea.style.height = '32px';
+        const scrollHeight = textarea.scrollHeight;
+        textarea.style.height = Math.min(scrollHeight, 200) + 'px';
+    }
+
+    function setupTextareaAutoResize(textareaId) {
+        const textarea = document.getElementById(textareaId);
+        if (!textarea) return;
+        
+        textarea.addEventListener('input', () => {
+            autoResizeTextarea(textarea);
+        });
+        
+        textarea.addEventListener('focus', () => {
+            autoResizeTextarea(textarea);
+        });
+    }
+
+    /* --- Helpers & UI functions --- */
+    function rotateMode() {
+        currentModeIdx = (currentModeIdx + 1) % modes.length;
+        document.body.className = modes[currentModeIdx].class;
+        document.getElementById('modeLabelBtn').innerText = modes[currentModeIdx].label;
+        cy.style().fromJson(createStyle()).update();
+        updateGrid();
+    }
+
+    function updateFileName(input, targetId = 'fileNameDisplay') {
+        const name = input.files && input.files[0] ? input.files[0].name : "ファイルを選択";
+        document.getElementById(targetId).innerText = name.length > 20 ? name.substring(0, 17) + "..." : name;
+    }
+    
+    function updateGrid() {
+        const type = document.getElementById('gridSelect').value;
+        const container = document.getElementById('cy');
+        if (type === 'none') { container.style.backgroundImage = 'none'; return; }
+        const zoom = cy.zoom(); const pan = cy.pan();
+        const baseSize = 25; const scaledSize = baseSize * zoom;
+        const style = getComputedStyle(document.body);
+        const gridColor = style.getPropertyValue('--grid-color').trim();
+        if (type === 'grid-dot') {
+            const dotSize = Math.max(1, 1 * zoom); 
+            container.style.backgroundImage = `radial-gradient(${gridColor} ${dotSize}px, transparent ${dotSize}px)`;
+            container.style.backgroundSize = `${scaledSize}px ${scaledSize}px`;
+        } else if (type === 'grid-line') {
+            container.style.backgroundImage = `linear-gradient(${gridColor} 1px, transparent 1px), linear-gradient(90deg, ${gridColor} 1px, transparent 1px)`;
+            container.style.backgroundSize = `${scaledSize}px ${scaledSize}px`;
+        }
+        container.style.backgroundPosition = `${pan.x}px ${pan.y}px`;
+    }
+    cy.on('zoom pan', updateGrid); updateGrid();
+
+    function zoomIn() {
+        const container = document.getElementById('cy');
+        const rect = container.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        
+        const pan = cy.pan();
+        const zoom = cy.zoom();
+        
+        cy.zoom(zoom * 1.2);
+        cy.pan({ x: pan.x - (centerX * (zoom * 1.2 / zoom - 1)), y: pan.y - (centerY * (zoom * 1.2 / zoom - 1)) });
+        updateGrid();
+    }
+
+    function zoomOut() {
+        const container = document.getElementById('cy');
+        const rect = container.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        
+        const pan = cy.pan();
+        const zoom = cy.zoom();
+        const newZoom = zoom / 1.2;
+        
+        cy.zoom(newZoom);
+        cy.pan({ x: pan.x - (centerX * (newZoom / zoom - 1)), y: pan.y - (centerY * (newZoom / zoom - 1)) });
+        updateGrid();
+    }
+
+    function performSearch(query) {
+        query = query.toLowerCase().trim();
+        cy.batch(() => {
+            if (!query) { cy.elements().removeClass('dimmed highlight'); return; }
+            const match = cy.nodes().filter(n => {
+                const label = (n.data('label') || "").toLowerCase();
+                const details = (n.data('details') || "").toLowerCase();
+                return label.includes(query) || details.includes(query);
+            });
+            const others = cy.elements().not(match);
+            match.removeClass('dimmed').addClass('highlight');
+            others.removeClass('highlight').addClass('dimmed');
+        });
+    }
+
+    function updateCircle(pId, cId) {
+        const val = document.getElementById(pId).value;
+        const el = document.getElementById(cId);
+        el.style.borderColor = val;
+        if (cId === 'b-square') {
+            el.style.background = 'transparent';
+        }
+    }
+
+    function hidePanels() { document.querySelectorAll('.detail-panel').forEach(p => p.style.display = 'none'); }
+    cy.on('tap', (e) => { if(e.target === cy) { hidePanels(); selectedEleId = null; } });
+    function showPanelAt(panel, evt) {
+        panel.style.display = 'flex';
+        const sidebarWidth = document.getElementById('sidebar').offsetWidth;
+        const panelHeight = panel.offsetHeight || 250;
+        let x = evt.renderedPosition.x + sidebarWidth + 50;
+        let y = evt.renderedPosition.y - (panelHeight / 2);
+        if (y < 10) y = 10;
+        if (y + panelHeight > window.innerHeight) y = window.innerHeight - panelHeight - 10;
+        panel.style.left = x + 'px'; panel.style.top = y + 'px';
+    }
+
+    cy.on('cxttap', 'node', function(evt){
+        const node = evt.target;
+        selectedEleId = node.id(); hidePanels();
+        const p = document.getElementById('nodeDetailPanel'); p.style.display = 'flex';
+        document.getElementById('editLabel').value = node.data('label');
+        if(node.data('isBox')) {
+            document.getElementById('editLabel').placeholder = 'ボックス名';
+        } else {
+            document.getElementById('editLabel').placeholder = '単語名';
+        }
+        document.getElementById('editLabel').focus();
+        document.getElementById('editDetails').value = node.data('details') || '';
+        if(node.data('isBox')) {
+            document.getElementById('editDetails').placeholder = "詳細";
+        } else {
+            document.getElementById('editDetails').placeholder = "詳細を入力";
+        }
+        document.getElementById('editColor').value = node.data('color') || '#ffffff';
+        autoResizeTextarea('editDetails');
+        showPanelAt(p, evt);
+    });
+    cy.on('cxttap', 'edge', function(evt){
+        const edge = evt.target;
+        selectedEleId = edge.id(); hidePanels();
+        const p = document.getElementById('edgeDetailPanel'); p.style.display = 'flex';
+        document.getElementById('editEdgeLabel').value = edge.data('label') || '';
+        document.getElementById('editEdgeLabel').placeholder = '関係性';
+        document.getElementById('editEdgeLabel').focus();
+        document.getElementById('editEdgeDetails').value = edge.data('details') || '';
+        document.getElementById('editEdgeDetails').placeholder = '詳細';
+        document.getElementById('editEdgeColor').value = edge.data('color') || '#000';
+        document.getElementById('editEdgeStyle').value = edge.data('style') || 'arrow';
+        autoResizeTextarea('editEdgeDetails');
+        showPanelAt(p, evt);
+    });
+
+    function deleteCurrentElement() {
+        if(!selectedEleId) return;
+        const target = cy.$id(selectedEleId);
+        if(target.length > 0) {
+            const data = target.json();
+            historyManager.push({ type: 'remove', data: data });
+            cy.remove(target);
+            hidePanels();
+            updateDropdowns();
+            selectedEleId = null;
+        }
+    }
+
+    function setupLongPress(btnId) {
+        const btn = document.getElementById(btnId); let timer; const DURATION = 500;
+        const startPress = (e) => {
+            if (e.type === 'mousedown' && e.button !== 0) return;
+            e.preventDefault(); e.stopPropagation();
+            btn.classList.add('is-pressing'); btn.innerText = '削除中...';
+            timer = setTimeout(() => { deleteCurrentElement(); resetBtn(); }, DURATION);
+        };
+        const cancelPress = () => { clearTimeout(timer); resetBtn(); };
+        const resetBtn = () => { btn.classList.remove('is-pressing'); btn.innerText = '長押しで削除'; };
+        btn.addEventListener('mousedown', startPress); btn.addEventListener('mouseup', cancelPress);
+        btn.addEventListener('mouseleave', cancelPress); btn.addEventListener('touchstart', startPress);
+        btn.addEventListener('touchend', cancelPress); btn.addEventListener('touchcancel', cancelPress);
+    }
+    setupLongPress('btnDeleteNode'); setupLongPress('btnDeleteEdge');
+
+    /* --- Add/Update Logic --- */
+
+    function addBox() {
+        const l = document.getElementById('boxLabel');
+        const details = document.getElementById('boxDetails').value || '';
+        const i = document.getElementById('boxImage');
+        if(!l.value) return alert("ボックス名を入力");
+        const borderColor = document.getElementById('boxPicker').value || '#95a5a6';
+        
+        const process = (img) => {
+            const data = { group: 'nodes', data: { id: 'box'+Date.now(), label: l.value, color: borderColor, details: details, isBox: true, bgImage: img || 'none' }, position: { x: cy.width()/2, y: cy.height()/2 } };
+            cy.add(data);
+            historyManager.push({ type: 'add', data: data });
+            l.value = ''; document.getElementById('boxDetails').value = ''; i.value = '';
+            document.getElementById('boxFileNameDisplay').innerText = "画像を選択";
+            updateDropdowns();
+        };
+        
+        if (i.files[0]) { const r = new FileReader(); r.onload = (e) => process(e.target.result); r.readAsDataURL(i.files[0]); } else process(null);
+    }
+
+    function addNode() {
+        const l = document.getElementById('wordLabel'), d = document.getElementById('wordDetails'), i = document.getElementById('wordImage');
+        if (!l.value) return alert("単語名を入力");
+        const process = (img) => {
+            const data = { group: 'nodes', data: { id: 'n'+Date.now(), label: l.value, details: d.value, color: document.getElementById('wordPicker').value, bgImage: img || 'none' }, position: { x: cy.width()/2 + (Math.random()*40-20), y: cy.height()/2 + (Math.random()*40-20) } };
+            cy.add(data);
+            historyManager.push({ type: 'add', data: data });
+            l.value = ''; d.value = ''; i.value = '';
+            document.getElementById('fileNameDisplay').innerText = "画像を選択 (オプション)";
+            updateDropdowns();
+        };
+        if (i.files[0]) { const r = new FileReader(); r.onload = (e) => process(e.target.result); r.readAsDataURL(i.files[0]); } else process(null);
+    }
+
+    function addEdge() {
+        const s = document.getElementById('sNode').value, t = document.getElementById('tNode').value;
+        if (!s || !t) return alert("単語/ボックスを選択");
+        if (s === t) return alert("自分自身には接続できません");
+        const data = { group: 'edges', data: { id: 'e'+Date.now(), source: s, target: t, label: document.getElementById('edgeLabel').value, details: document.getElementById('edgeDetails').value, color: document.getElementById('edgePicker').value, style: document.getElementById('edgeStyle').value } };
+        cy.add(data);
+        historyManager.push({ type: 'add', data: data });
+        document.getElementById('edgeLabel').value = '';
+        document.getElementById('edgeDetails').value = '';
+        document.getElementById('edgeStyle').value = 'arrow';
+    }
+
+    function updateNodeData() {
+        if(!selectedEleId) return;
+        const target = cy.$id(selectedEleId);
+        const oldData = { ...target.data() };
+        const file = document.getElementById('editImage').files[0];
+        const apply = (img) => {
+            const newDataPartial = {
+                label: document.getElementById('editLabel').value,
+                details: document.getElementById('editDetails').value,
+                color: document.getElementById('editColor').value,
+                bgImage: img || target.data('bgImage')
+            };
+            const merged = { ...oldData, ...newDataPartial };
+            target.data(merged);
+            historyManager.push({ type: 'modify', id: target.id(), oldData: oldData, newData: merged });
+            hidePanels(); updateDropdowns(); selectedEleId = null; closeSidebarOnMobile();
+        };
+        if(file){ const r=new FileReader(); r.onload=(e)=>apply(e.target.result); r.readAsDataURL(file); } else apply(null);
+    }
+
+    function updateEdgeData() {
+        if(!selectedEleId) return;
+        const target = cy.$id(selectedEleId);
+        const oldData = { ...target.data() };
+        const newData = {
+            label: document.getElementById('editEdgeLabel').value,
+            details: document.getElementById('editEdgeDetails').value,
+            color: document.getElementById('editEdgeColor').value,
+            style: document.getElementById('editEdgeStyle').value
+        };
+        const merged = { ...oldData, ...newData };
+        target.data(merged);
+        historyManager.push({ type: 'modify', id: target.id(), oldData: oldData, newData: merged });
+        hidePanels(); selectedEleId = null; closeSidebarOnMobile();
+    }
+
+    function updateDropdowns() {
+        const selects = [document.getElementById('sNode'), document.getElementById('tNode')];
+        const nodes = cy.nodes();
+        selects.forEach(sel => {
+            const cur = sel.value; sel.innerHTML = '';
+            nodes.forEach(n => {
+                const opt = document.createElement('option'); 
+                opt.value = n.id();
+                const prefix = n.data('isBox') ? '■ ' : '● ';
+                opt.innerText = prefix + n.data('label'); 
+                sel.appendChild(opt); 
+            });
+            if (nodes.length > 0 && !cur) sel.value = nodes[nodes.length-1].id(); else sel.value = cur;
+        });
+    }
+
+    function exportJSON() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(cy.json())], {type: 'application/json'})); a.download = 'map.json'; a.click(); }
+    function importJSON(e) { 
+        const r = new FileReader(); 
+        r.onload = (evt) => { 
+            cy.elements().remove(); 
+            cy.json(JSON.parse(evt.target.result)); 
+            historyManager.undoStack = []; historyManager.redoStack = []; historyManager.updateButtons(); 
+            updateDropdowns(); cy.fit(null, 50); 
+        }; 
+        r.readAsText(e.target.files[0]); 
+    }
+    function downloadPNG() { const a = document.createElement('a'); a.href = cy.png({ full: true, scale: 2 }); a.download = 'map.png'; a.click(); }
+    function downloadSVG() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([cy.svg({ full: true, bg: document.body.classList.contains('dark-mode') ? '#121212' : (document.body.classList.contains('blue-mode') ? '#020c1b' : '#fff') })], {type:"image/svg+xml"})); a.download = 'map.svg'; a.click(); }
+
+    updateDropdowns();
+    document.getElementById('pasteBtn').disabled = true;
+
+    // Setup textarea auto-resize for all textareas
+    setupTextareaAutoResize('wordDetails');
+    setupTextareaAutoResize('boxDetails');
+    setupTextareaAutoResize('edgeDetails');
+    setupTextareaAutoResize('editDetails');
+    setupTextareaAutoResize('editEdgeDetails');
+
+    document.addEventListener('keydown', (e) => {
+        const mod = e.ctrlKey || e.metaKey;
+        const key = e.key.toLowerCase();
+        
+        // Escape キーでパネルを閉じる
+        if (key === 'escape') {
+            e.preventDefault();
+            hidePanels();
+            selectedEleId = null;
+            closeSidebarOnMobile();
+            return;
+        }
+        
+        // Delete キーで要素削除
+        if (key === 'delete') {
+            e.preventDefault();
+            const selected = cy.$(':selected');
+            if (selected.length > 0) {
+                selected.forEach(ele => {
+                    const data = ele.json();
+                    historyManager.push({ type: 'remove', data: data });
+                    cy.remove(ele);
+                });
+                updateDropdowns();
+            } else if (selectedEleId) {
+                deleteCurrentElement();
+            }
+            return;
+        }
+        
+        if (!mod) return;
+        
+        if (key === 'c') {
+            e.preventDefault();
+            copySelection();
+        } else if (key === 'v') {
+            e.preventDefault();
+            pasteClipboard();
+        } else if (key === 'z') {
+            e.preventDefault();
+            historyManager.undo();
+        } else if (key === 'y' || (e.shiftKey && key === 'z')) {
+            e.preventDefault();
+            historyManager.redo();
+        }
+    });
+
+</script>
+</body>
+</html>
